@@ -1,0 +1,323 @@
+print([[
+               .       *       .
+            .       .  *  .       .
+         .     *  .:::::::::.  *     .
+        .  *    .:::::::::::::.    *  .
+       .       .::::'  •  '::::.       .
+      .   *   .:::::  L U N A R  :::::.  *
+      .      .:::::'  •  ':::::'      .
+       .   *  ':::::.       .:::::'  * .
+        .       ':::::.   .:::::'       .
+         .   *     ':::::::::'     *   .
+            .       ':::::'       .
+               .       '       .
+]])
+task.wait(2.5)
+local repo = "https://raw.githubusercontent.com/deividcomsono/Obsidian/main/"
+local Library = loadstring(game:HttpGet(repo.."Library.lua"))()
+local ThemeManager = loadstring(game:HttpGet(repo.."addons/ThemeManager.lua"))()
+local SaveManager = loadstring(game:HttpGet(repo.."addons/SaveManager.lua"))()
+
+local Window = Library:CreateWindow({Title="Lunar - Flick",Footer="Made By Jayz & Cypher",Center=true,AutoShow=true,ToggleKeybind=Enum.KeyCode.RightControl})
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local Camera = workspace.CurrentCamera
+local Player = Players.LocalPlayer
+local Mouse = Player:GetMouse()
+
+local ScreenGui = Instance.new("ScreenGui",Player:WaitForChild("PlayerGui"))
+local FOVFrame = Instance.new("Frame")
+local FOVStroke = Instance.new("UIStroke")
+
+FOVFrame.AnchorPoint = Vector2.new(0.5,0.5)
+FOVFrame.Position = UDim2.new(0.5,0,0.5,0)
+FOVFrame.Size = UDim2.new(0,240,0,240)
+FOVFrame.BackgroundTransparency = 1
+FOVFrame.Parent = ScreenGui
+
+FOVStroke.Color = Color3.fromRGB(255,0,255)
+FOVStroke.Thickness = 2
+FOVStroke.Parent = FOVFrame
+
+local Settings = {
+    Fly = false, FlySpeed = 120,
+    WalkSpeed = false, SpeedValue = 100,
+    JumpPower = false, JumpValue = 150,
+    InfiniteJump = false, Noclip = false,
+    Aimbot = false, AimAssist = false, AimPart = "Head", AimSpeed = 25, WallCheck = false,
+    ShowFOV = true, FOVRadius = 120,
+    ESP = false, ESPTeamCheck = false, ESPBox = true, ESPName = true, ESPTracer = true, ESPHealth = true, ESPDistance = true
+}
+
+local ESP = {}
+local FlyBV, FlyBG = nil, nil
+
+local function StartFly()
+    if not Player.Character or not Player.Character:FindFirstChild("HumanoidRootPart") then return end
+    local root = Player.Character.HumanoidRootPart
+    if FlyBV then FlyBV:Destroy() end
+    if FlyBG then FlyBG:Destroy() end
+    FlyBV = Instance.new("BodyVelocity",root) FlyBV.MaxForce = Vector3.new(0,0,0) FlyBV.P = 1250
+    FlyBG = Instance.new("BodyGyro",root) FlyBG.MaxTorque = Vector3.new(0,0,0) FlyBG.P = 9000 FlyBG.D = 500
+    root.CustomPhysicalProperties = PhysicalProperties.new(0,0,0,0,0)
+end
+
+local function StopFly()
+    if FlyBV then FlyBV:Destroy() FlyBV = nil end
+    if FlyBG then FlyBG:Destroy() FlyBG = nil end
+    if Player.Character and Player.Character:FindFirstChild("HumanoidRootPart") then
+        Player.Character.HumanoidRootPart.CustomPhysicalProperties = nil
+    end
+end
+
+Player.CharacterAdded:Connect(function()
+    if Settings.Fly then task.wait(0.5) StartFly() end
+end)
+
+local Edges = {{1,2},{2,3},{3,4},{4,1},{5,6},{6,7},{7,8},{8,5},{1,5},{2,6},{3,7},{4,8}}
+
+local function Create3DBox()
+    local t = {}
+    for i = 1,12 do
+        local l = Drawing.new("Line")
+        l.Color = Color3.fromRGB(255,0,255) l.Thickness = 2 l.Transparency = 1 l.Visible = false
+        table.insert(t,l)
+    end
+    return t
+end
+
+local function GetCorners(part,extra)
+    extra = extra or 2
+    local c,s = part.CFrame,part.Size/2 + Vector3.new(extra,extra,extra)
+    return {
+        c*Vector3.new(-s.X,-s.Y,-s.Z),c*Vector3.new(s.X,-s.Y,-s.Z),
+        c*Vector3.new(s.X,-s.Y,s.Z),c*Vector3.new(-s.X,-s.Y,s.Z),
+        c*Vector3.new(-s.X,s.Y,-s.Z),c*Vector3.new(s.X,s.Y,-s.Z),
+        c*Vector3.new(s.X,s.Y,s.Z),c*Vector3.new(-s.X,s.Y,s.Z)
+    }
+end
+
+local function CanSee(part)
+    if not Settings.WallCheck then return true end
+    local hrp = Player.Character and Player.Character:FindFirstChild("HumanoidRootPart")
+    if not hrp then return false end
+    local hit = workspace:FindPartOnRayWithIgnoreList(Ray.new(hrp.Position,(part.Position-hrp.Position).Unit*500),{Player.Character})
+    return hit and hit:IsDescendantOf(part.Parent)
+end
+
+local function GetClosest()
+    local best,dist = nil,math.huge
+    for _,v in Players:GetPlayers() do
+        if v ~= Player and v.Character and v.Character:FindFirstChild(Settings.AimPart) then
+            local part = v.Character[Settings.AimPart]
+            local hum = v.Character:FindFirstChildOfClass("Humanoid")
+            if hum and hum.Health > 0 and CanSee(part) then
+                local sp,on = Camera:WorldToViewportPoint(part.Position)
+                if on then
+                    local d = (Vector2.new(Mouse.X,Mouse.Y+36)-Vector2.new(sp.X,sp.Y)).Magnitude
+                    if d <= Settings.FOVRadius and d < dist then
+                        dist = d best = part
+                    end
+                end
+            end
+        end
+    end
+    return best
+end
+
+RunService.Heartbeat:Connect(function()
+    FOVFrame.Size = UDim2.new(0,Settings.FOVRadius*2,0,Settings.FOVRadius*2)
+    FOVFrame.Visible = Settings.ShowFOV
+
+    if Settings.Fly and Player.Character and Player.Character:FindFirstChild("HumanoidRootPart") then
+        if not FlyBV or not FlyBG then StartFly() end
+        local move = Vector3.new()
+        if UserInputService:IsKeyDown(Enum.KeyCode.W) then move += Camera.CFrame.LookVector end
+        if UserInputService:IsKeyDown(Enum.KeyCode.S) then move -= Camera.CFrame.LookVector end
+        if UserInputService:IsKeyDown(Enum.KeyCode.A) then move -= Camera.CFrame.RightVector end
+        if UserInputService:IsKeyDown(Enum.KeyCode.D) then move += Camera.CFrame.RightVector end
+        if UserInputService:IsKeyDown(Enum.KeyCode.Space) then move += Vector3.new(0,1,0) end
+        if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then move -= Vector3.new(0,1,0) end
+        FlyBV.Velocity = move.Unit * Settings.FlySpeed
+        FlyBG.CFrame = Camera.CFrame
+    else
+        StopFly()
+    end
+end)
+
+RunService.RenderStepped:Connect(function()
+    if Settings.Aimbot or Settings.AimAssist then
+        local t = GetClosest()
+        if t then
+            if Settings.Aimbot then
+                Camera.CFrame = CFrame.new(Camera.CFrame.Position,t.Position)
+            else
+                Camera.CFrame = Camera.CFrame:Lerp(CFrame.new(Camera.CFrame.Position,t.Position),Settings.AimSpeed/100)
+            end
+        end
+    end
+
+    if Player.Character and Player.Character:FindFirstChildOfClass("Humanoid") then
+        local hum = Player.Character:FindFirstChildOfClass("Humanoid")
+        hum.WalkSpeed = Settings.WalkSpeed and Settings.SpeedValue or 16
+        hum.JumpPower = Settings.JumpPower and Settings.JumpValue or 50
+    end
+end)
+
+RunService.RenderStepped:Connect(function()
+    if not Settings.ESP then
+        for _,data in ESP do
+            for _,obj in data do
+                if typeof(obj)=="table" then for _,l in obj do l.Visible = false end else obj.Visible = false end
+            end
+        end
+        return
+    end
+
+    local myRoot = Player.Character and Player.Character:FindFirstChild("HumanoidRootPart")
+    if not myRoot then return end
+
+    for _,data in ESP do
+        for _,obj in data do
+            if typeof(obj)=="table" then for _,l in obj do l.Visible = false end else obj.Visible = false end
+        end
+    end
+
+    for _,p in Players:GetPlayers() do
+        if p == Player or (Settings.ESPTeamCheck and p.Team == Player.Team) then continue end
+        local char = p.Character
+        if not char then ESP[p] = nil continue end
+        local root = char:FindFirstChild("HumanoidRootPart")
+        local head = char:FindFirstChild("Head")
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        if not root or not head or not hum or hum.Health <= 0 then ESP[p] = nil continue end
+
+        if not ESP[p] then
+            ESP[p] = {
+                Box = Create3DBox(),
+                Name = Drawing.new("Text"),
+                Tracer = Drawing.new("Line"),
+                HealthText = Drawing.new("Text"),
+                DistanceText = Drawing.new("Text")
+            }
+            local d = ESP[p]
+            d.Name.Size = 15 d.Name.Center = true d.Name.Outline = true d.Name.Color = Color3.new(1,1,1) d.Name.Font = 2
+            d.Tracer.Thickness = 2 d.Tracer.Color = Color3.fromRGB(255,0,255)
+            d.HealthText.Size = 14 d.HealthText.Center = true d.HealthText.Outline = true d.HealthText.Color = Color3.fromRGB(180,255,180) d.HealthText.Font = 2
+            d.DistanceText.Size = 13 d.DistanceText.Center = true d.DistanceText.Outline = true d.DistanceText.Color = Color3.fromRGB(255,255,100) d.DistanceText.Font = 2
+        end
+
+        local d = ESP[p]
+        local corners = GetCorners(root,2)
+        local points,onScreen = {},false
+        for i,v in ipairs(corners) do
+            local s,vis = Camera:WorldToViewportPoint(v)
+            points[i] = Vector2.new(s.X,s.Y)
+            if vis then onScreen = true end
+        end
+
+        if onScreen then
+            for i,e in ipairs(Edges) do
+                local line = d.Box[i]
+                line.From = points[e[1]]
+                line.To = points[e[2]]
+                line.Visible = Settings.ESPBox
+            end
+        end
+
+        local headPos,headVis = Camera:WorldToViewportPoint(head.Position + Vector3.new(0,1.5,0))
+        if headVis then
+            d.Name.Position = Vector2.new(headPos.X,headPos.Y)
+            d.Name.Text = p.DisplayName ~= "" and p.DisplayName or p.Name
+            d.Name.Visible = Settings.ESPName
+        end
+
+        local rootPos = Camera:WorldToViewportPoint(root.Position)
+        if rootPos.Z > 0 then
+            d.Tracer.From = Vector2.new(Camera.ViewportSize.X/2,Camera.ViewportSize.Y)
+            d.Tracer.To = Vector2.new(rootPos.X,rootPos.Y)
+            d.Tracer.Visible = Settings.ESPTracer
+        end
+
+        local healthPos = Camera:WorldToViewportPoint(head.Position + Vector3.new(0,2.5,0))
+        if healthPos.Z > 0 then
+            d.HealthText.Position = Vector2.new(healthPos.X,healthPos.Y)
+            d.HealthText.Text = tostring(math.floor(hum.Health))
+            d.HealthText.Visible = Settings.ESPHealth
+        end
+
+        local dist = math.floor((myRoot.Position - root.Position).Magnitude)
+        local distPos = Camera:WorldToViewportPoint(root.Position - Vector3.new(0,3.5,0))
+        if distPos.Z > 0 then
+            d.DistanceText.Position = Vector2.new(distPos.X,distPos.Y)
+            d.DistanceText.Text = dist.." studs"
+            d.DistanceText.Visible = Settings.ESPDistance
+        end
+    end
+end)
+
+Players.PlayerRemoving:Connect(function(p)
+    if ESP[p] then
+        for _,obj in ESP[p] do
+            if typeof(obj)=="table" then for _,l in obj do l:Remove() end else obj:Remove() end
+        end
+        ESP[p] = nil
+    end
+end)
+
+RunService.Stepped:Connect(function()
+    if Settings.Noclip and Player.Character then
+        for _,v in Player.Character:GetDescendants() do
+            if v:IsA("BasePart") then v.CanCollide = false end
+        end
+    end
+end)
+
+UserInputService.JumpRequest:Connect(function()
+    if Settings.InfiniteJump then
+        Player.Character:FindFirstChildOfClass("Humanoid"):ChangeState("Jumping")
+    end
+end)
+
+local MovementTab = Window:AddTab({Name="Movement",Icon="zap"})
+local CombatTab = Window:AddTab({Name="Combat",Icon="crosshair"})
+local VisualTab = Window:AddTab({Name="Visual",Icon="eye"})
+local SettingsTab = Window:AddTab({Name="Settings",Icon="settings"})
+
+local Movement = MovementTab:AddLeftGroupbox("Movement")
+Movement:AddToggle("Fly",{Text="Fly",Callback=function(v) Settings.Fly=v end})
+Movement:AddSlider("FlySpeed",{Text="Fly Speed",Min=50,Max=500,Default=120,Callback=function(v) Settings.FlySpeed=v end})
+Movement:AddToggle("SpeedHack",{Text="Speed Hack",Callback=function(v) Settings.WalkSpeed=v end})
+Movement:AddSlider("Speed",{Text="Speed Value",Min=16,Max=500,Default=100,Callback=function(v) Settings.SpeedValue=v end})
+Movement:AddToggle("JumpHack",{Text="Jump Power",Callback=function(v) Settings.JumpPower=v end})
+Movement:AddSlider("Jump",{Text="Jump Value",Min=50,Max=500,Default=150,Callback=function(v) Settings.JumpValue=v end})
+Movement:AddToggle("InfJump",{Text="Infinite Jump",Callback=function(v) Settings.InfiniteJump=v end})
+Movement:AddToggle("Noclip",{Text="Noclip",Callback=function(v) Settings.Noclip=v end})
+
+local Combat = CombatTab:AddLeftGroupbox("Combat")
+Combat:AddToggle("Aimbot",{Text="Silent Aimbot",Callback=function(v) Settings.Aimbot=v if v then Settings.AimAssist=false end end})
+Combat:AddToggle("Assist",{Text="Aim Assist",Callback=function(v) Settings.AimAssist=v if v then Settings.Aimbot=false end end})
+Combat:AddToggle("ShowFOV",{Text="Show FOV Circle",Default=true,Callback=function(v) Settings.ShowFOV=v end})
+Combat:AddSlider("FOVRadius",{Text="FOV Radius",Min=10,Max=1000,Default=120,Callback=function(v) Settings.FOVRadius=v end})
+Combat:AddDropdown("AimPart",{Text="Aim Part",Values={"Head","HumanoidRootPart","UpperTorso"},Default="Head",Callback=function(v) Settings.AimPart=v end})
+Combat:AddSlider("Smooth",{Text="Smoothness",Min=1,Max=100,Default=25,Callback=function(v) Settings.AimSpeed=v end})
+Combat:AddToggle("WallCheck",{Text="Wall Check",Callback=function(v) Settings.WallCheck=v end})
+
+local Visual = VisualTab:AddLeftGroupbox("ESP")
+Visual:AddToggle("EnableESP",{Text="Enable ESP",Callback=function(v) Settings.ESP=v end})
+Visual:AddToggle("TeamCheck",{Text="Team Check",Callback=function(v) Settings.ESPTeamCheck=v end})
+Visual:AddToggle("Box3D",{Text="3D Box",Default=true,Callback=function(v) Settings.ESPBox=v end})
+Visual:AddToggle("NameESP",{Text="Name",Default=true,Callback=function(v) Settings.ESPName=v end})
+Visual:AddToggle("TracerESP",{Text="Tracer",Default=true,Callback=function(v) Settings.ESPTracer=v end})
+Visual:AddToggle("HealthESP",{Text="Health Number",Default=true,Callback=function(v) Settings.ESPHealth=v end})
+Visual:AddToggle("DistanceESP",{Text="Distance",Default=true,Callback=function(v) Settings.ESPDistance=v end})
+
+SaveManager:SetLibrary(Library)
+SaveManager:SetFolder("LunarFlick")
+SaveManager:BuildConfigSection(SettingsTab)
+ThemeManager:SetLibrary(Library)
+ThemeManager:SetFolder("LunarFlick")
+ThemeManager:ApplyToTab(SettingsTab)
+SaveManager:LoadAutoloadConfig()
